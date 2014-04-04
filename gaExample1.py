@@ -35,12 +35,17 @@ if __name__ == '__main__':
                     [0.3229, 0.1386],
                     [0.0481, 0.1625],
                     [0.4921, 0.2845]]
-    problem = ga('Two-bar Truss', variables, definition, objective, ineq, eq,
-                 starting_gen, 6, False)
+    problem = ga(name='Two-bar Truss', variables=variables,
+                 definition=definition, objective=objective, ineq=ineq,
+                 starting_gen=starting_gen, trim_first=False)
     print problem
     print problem.current_generation_str()
 
     selection_rnd = [0.5292, 0.0436, 0.2949, 0.0411, 0.9116, 0.7869,
                      0.3775, 0.8691, 0.1562, 0.5616, 0.8135, 0.4158,
                      0.7223, 0.3062, 0.1357, 0.5625, 0.2974, 0.6033]
-    print problem.next_generation(2, selection_rnd)
+    mutation_rnd = [0.2252, 0.7413, 0.5135, 0.8383, 0.4788, 0.1916,
+                    0.4445, 0.8220, 0.2062, 0.0403, 0.5252, 0.3216,
+                    0.8673]
+    problem.next_generation(2, selection_rnd, mutation_rnd, False)
+    print problem.current_generation_str()

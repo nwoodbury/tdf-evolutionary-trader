@@ -5,6 +5,7 @@ An implementation of a multi-objective value-based genetic algorithm.
 from termcolor import colored
 import random
 import math
+from copy import deepcopy
 
 
 def is_equal(x, y, tol=0.001):
@@ -22,10 +23,11 @@ def is_equal(x, y, tol=0.001):
 
 class GA:
 
-    def __init__(self, name, variables, definition, objective, ineq, eq,
-                 starting_gen, max_gen_size=None, trim_first=True):
+    def __init__(self, **kwargs):
         """
         Algorithm initialization.
+
+        Note that all the following parameters are default kwargs.
 
         @param name {string} The name of the problem.
         @param variables {list of string} A list of variable names in the order
@@ -56,6 +58,15 @@ class GA:
         @param max_gen_size {int, default=len(starting_gen)} The maximum
             allowed genes in a generation. This is ignored for multi-objective
             optimization problems.
+        @param crossover_prob {number, default=0.6} The probability of
+            performing a crossover.
+        @param mutation_prob {number, default=0.1} The probability of
+            performing a mutation.
+        @param total_generations {int, default=10} The total number of
+            generations to be found by the algorithm. Since the given starting
+            generation is 1, the algorithm will iterate total_generations-1
+            times.
+        @param beta {number, default=5} The mutation parameter
         @param trim_first {boolean} True if the initial generation should
             be immediately trimmed and sorted (False is useful for testing)
 
@@ -70,49 +81,30 @@ class GA:
         @throws {Exception} If the length of each gene in the starting
             generation is not the same as variables.
         """
-        # name initialization
-        self.name = name
+        # Set All Variables
+        self.name = kwargs.get('name', 'UNAMED')
+        self.variables = kwargs.get('variables', [])
+        self.definition = self.__populate_definition(
+            kwargs.get('definition', {}))
+        self.objective = kwargs.get('objective', [])
+        self.ineq = kwargs.get('ineq', [])
+        self.eq = kwargs.get('eq', [])
+        self.starting_gen = kwargs.get('starting_gen', [])
+        self.max_gen_size = kwargs.get('max_gen_size', len(self.starting_gen))
+        self.crossover_prob = kwargs.get('crossover_prob', 0.6)
+        self.mutation_prob = kwargs.get('mutation_prob', 0.1)
+        self.total_generations = kwargs.get('total_generations', 10)
+        self.beta = kwargs.get('beta', 5)
+        self.trim_first = kwargs.get('trim_first', True)
 
-        # variables and problem definition initialization
-        self.variables = variables
-        self.definition = self.__populate_definition(definition)
-        for var in self.variables:
-            if var not in self.definition:
-                raise Exception('%s In variables but not in definition.' % var)
-        for var in self.definition:
-            if var not in self.variables:
-                raise Exception('%s In definition but not in variables.' % var)
+        # Check Feasibilities (whether given parameters are allowed)
+        self.__check_variables_definition_feasibility()
+        self.__check_objective_feasibility()
+        self.__check_constraints_feasibility()
+        self.__check_initial_conditions_feasibility()
 
-        # objective initialization
-        self.objective = objective
-        for obj in objective:
-            if len(obj) != len(self.variables) + 1:
-                raise Exception('Improperly-sized objective')
-
-        # constraints (ineq, eq) initialization
-        self.ineq = ineq
-        self.eq = eq
-        for const in self.ineq + self.eq:
-            if len(const) != len(self.variables) + 1:
-                raise Exception('Improperly-sized constraint(s)')
-
-        # initial conditions (starting_gen) initialization
-        self.starting_gen = starting_gen
-        for gene in self.starting_gen:
-            if len(gene) is not len(variables):
-                raise Exception('Length of gene is not equal to length of ' +
-                                'defined variables')
-
-        # maximum generation size
-        if max_gen_size is None:
-            max_gen_size = len(starting_gen)
-        self.max_gen_size = max_gen_size
-
-        # current generation
-        self.generation = []
-        for gene in self.starting_gen:
-            self.__add_gene(gene)
-        self.__trim_generation(trim_first)
+        # Initialize current generation
+        self.__initialize_current_generation()
 
     def __str__(self):
         """
@@ -140,8 +132,8 @@ class GA:
 
         strng += 'Maximum Generation Size = %i\n' % self.max_gen_size
         strng += 'Starting Generation:\n'
-        for gene in self.starting_gen:
-            strng += '\t%s\n' % self.__gene2str(gene)
+        for chromosome in self.starting_gen:
+            strng += '\t%s\n' % self.__chromosome2str(chromosome)
 
         strng += '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'
         return strng
@@ -154,32 +146,36 @@ class GA:
 
         @returns {string}
         """
-        print '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'
-        print 'Current generation for Problem: %s\n' % self.name
+        strng = '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'
+        strng += 'Current generation for Problem: %s\n\n' % self.name
 
         j = 1
-        for generep in self.generation:
+        for chromosomerep in self.generation:
             infeasible_string = ''
-            if not is_equal(generep['g'], 0, 0.0001):
+            if not is_equal(chromosomerep['g'], 0, 0.0001):
                 infeasible_string = colored(' (Infeasible)', 'red')
-            print 'Design %i%s: %s' % (j, infeasible_string,
-                                       self.__gene2str(generep['gene']))
+            strng += 'Design %i%s: %s\n' % (j, infeasible_string,
+                                            self.__chromosome2str(
+                                                chromosomerep['chromosome']))
 
-            print colored('\tfitness = %.4f' % generep['fitness'], 'green')
+            strng += colored('\tfitness = %.4f\n' % chromosomerep['fitness'],
+                             'green')
 
             if verbose:
                 for i in range(1, len(self.objective) + 1):
-                    print '\tf%i = %.4f' % (i, generep['f%i' % i])
+                    strng += '\tf%i = %.4f\n' % (i, chromosomerep['f%i' % i])
                 for i in range(1, len(self.ineq) + len(self.eq) + 1):
-                    print '\tg%i = %.4f' % (i, generep['g%i' % i])
-                print '\tg = %.4f' % generep['g']
+                    strng += '\tg%i = %.4f\n' % (i, chromosomerep['g%i' % i])
+                strng += '\tg = %.4f\n' % chromosomerep['g']
 
             j += 1
 
-        print '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'
+        strng += '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'
+        return strng
 
     def next_generation(self, tournament_size=2,
-                        selection_rand=None, mutation_rand=None):
+                        selection_rand=None, mutation_rand=None,
+                        verbose=False):
         """
         Performs selection, crossover, and mutation to select the next
         generation. We assume elitism, meaning if the parent is better than
@@ -193,16 +189,28 @@ class GA:
         @param mutation_rand {list, default=None} If None, mutation will use
             a random number generator. Otherwise, random numbers will be
             taken in sequence from the given list.
+        @param verbose {boolean, default=False} True if output lines should
+            be printed for debugging.
 
         @returns {boolean} True if the next generation is different from the
             current generation.
         """
+        self.generation_number += 1
         new_generation = self.__selection(tournament_size, selection_rand)
-        print new_generation
+        if verbose:
+            print 'New generation after selection:'
+            print new_generation
+        mutated_generation = self.__mutation(new_generation, mutation_rand)
+        if verbose:
+            print 'New generation after mutation:'
+            print mutated_generation
+        for chromosome in mutated_generation:
+            self.__add_chromosome(chromosome)
+        self.__trim_generation()
 
-    #==========================================================================
+    # =========================================================================
     # Private Helpers: Selection, Crossover, and Mutation
-    #==========================================================================
+    # =========================================================================
 
     def __selection(self, tournament_size, selection_rand):
         """
@@ -217,83 +225,164 @@ class GA:
             number generator. Otherwise, random numbers will be taken in
             sequence from the given list.
 
-        @returns {list} A list of N new genes where N is the number of genes
-            in the current population.
+        @returns {list of genes} A list of N new genes where N is the number of
+            genes in the current population.
         """
         N = len(self.generation)
+        new_generation = []
         for n in range(0, int(math.floor(N/2))):
             parents = []
             for p in [0, 1]:
                 minindex = -1
                 minfitness = 0
                 for i in range(0, tournament_size):
-                    if selection_rand is None:
-                        rdm = random.random()
-                    else:
-                        rdm = selection_rand.pop(0)
+                    rdm = self.__get_next_random(selection_rand)
                     index = int(math.floor(rdm*N))
                     fitness = self.generation[index]['fitness']
-                    print '%.4f, %i, %.4f' % (rdm, index, fitness)
+                    # print '%.4f, %i, %.4f' % (rdm, index, fitness)
                     if minindex == -1 or fitness < minfitness:
                         minfitness = fitness
                         minindex = index
                 parents.append(minindex)
-            print parents
+            children = self.__crossover(parents, selection_rand)
+            # print 'Child 1 = %s' % self.__chromosome2str(children[0])
+            # print 'Child 2 = %s' % self.__chromosome2str(children[1])
+            new_generation.append(children[0])
+            new_generation.append(children[1])
+        return new_generation
 
-    #==========================================================================
-    # Private Helpers: Gene and Generation Manipulation
-    #==========================================================================
-
-    def __add_gene(self, gene):
+    def __crossover(self, parents, crossover_rand):
         """
-        Adds the given gene to the population, computing fi, gi, and g for all
-        objectives and constraints i.
+        Performs crossover to create a child of the given parents. If the
+        parents are the same, no crossover is performed and the child is
+        the parent.
 
-        @param gene {list} The gene.
+        @param parents {list, size 2} Two indices of parents in self.generation
+        @param selection_rand {list} If None, crossover will use a random
+            number generator. Otherwise, random numbers will be taken in
+            sequence from the given list.
 
-        @throws {Exception} If the length of gene is not the length of
+        @returns {list of genes} A gene representing the 2 new children.
+        """
+        mother = self.generation[parents[0]]['chromosome']
+        father = self.generation[parents[1]]['chromosome']
+        if parents[0] == parents[1]:
+            child1 = deepcopy(mother)
+            child2 = deepcopy(father)
+
+        elif self.__get_next_random(crossover_rand) < self.crossover_prob:
+            # perform a crossover
+            child1 = []
+            child2 = []
+            for i in range(len(self.variables)):
+                crossover = self.__get_next_random(crossover_rand)
+                child1.append(crossover*mother[i] +
+                              (1-crossover)*father[i])
+                child2.append((1 - crossover)*mother[i] +
+                              crossover*father[i])
+        else:
+            child1 = deepcopy(mother)
+            child2 = deepcopy(father)
+
+        return child1, child2
+
+    def __mutation(self, new_generation, mutation_rand):
+        """
+        Performs mutation (with a given probability) on all the new children
+        given in new_generation.
+
+        @param new_generation {list of chromosomes} The list of new children
+            on which to perform mutation.
+        @param mutation_rand {list} If None, mutation will use a random
+            number generator. Otherwise, random numbers will be taken in
+            sequence from the given list.
+
+        @returns {list of chromosomes} List of child chromosome after mutation
+            has been performed.
+        """
+        for child in new_generation:
+            for i in range(len(self.variables)):
+                rnd = self.__get_next_random(mutation_rand)
+                cond = rnd < self.mutation_prob
+                # print '%.4f: %.4f < %.2f => mutate? %r' % (child[i], rnd,
+                #                                           self.mutation_prob,
+                #                                           cond)
+                if cond:
+                    j = self.generation_number
+                    M = self.total_generations
+                    alpha = (1 - (float(j) - 1) / float(M))**float(self.beta)
+                    r = self.__get_next_random(mutation_rand)
+                    xname = self.variables[i]
+                    xmin = self.definition[xname]['lb']
+                    xmax = self.definition[xname]['ub']
+                    x = child[i]
+                    y = xmin + r * (xmax - xmin)
+                    if y <= x:
+                        z = xmin + ((y - xmin)**alpha) * \
+                            ((x - xmin)**(1 - alpha))
+                    else:
+                        z = xmax - ((xmax - y)**alpha) *\
+                            ((xmax - x)**(1 - alpha))
+
+                    # print '\tMutated Gene = %.4f' % z
+
+                    child[i] = z
+        return new_generation
+
+    # =========================================================================
+    # Private Helpers: Gene and Generation Manipulation
+    # =========================================================================
+
+    def __add_chromosome(self, chromosome):
+        """
+        Adds the given chromosome to the population, computing fi, gi, and g
+        for all objectives and constraints i.
+
+        @param chromosome {list} The chromosome.
+
+        @throws {Exception} If the length of chromosome is not the length of
             variables.
-        @pre Each entry i in gene must correspond to variable i.
+        @pre Each entry i in chromosome must correspond to variable i.
 
-        @post {dict} The gene representation, given by the following key, value
-            pairs:
-                'gene': The gene itself,
+        @post {dict} The chromosome representation, given by the following
+            key, value pairs:
+                'chromosome': The chromosome itself,
                 'fi': (where i is an integer > 1) fi(x) where fi is the ith
-                    objective and x is the gene.
+                    objective and x is the chromosome.
                 'gi': (where i is an integer > 1) gi(x) where gi is the ith
-                    constraint and g is the gene.
+                    constraint and g is the chromosome.
                 'g': max(0, g1, g2, ...)
         """
 
-        generep = {'gene': gene}
+        chromosomerep = {'chromosome': chromosome}
 
         # Compute fi
         i = 1
         for obj in self.objective:
-            fi = self.__objective_val(obj, gene)
-            generep['f%i' % i] = fi
+            fi = self.__objective_val(obj, chromosome)
+            chromosomerep['f%i' % i] = fi
             i += 1
 
         # Compute all gi and g = max(0, g1, g2, ...)
         i = 1
         g = 0
         for const in self.ineq:
-            gi = self.__constraint_val(const, gene)
-            generep['g%i' % i] = gi
+            gi = self.__constraint_val(const, chromosome)
+            chromosomerep['g%i' % i] = gi
             g = max(g, gi)
             i += 1
         for const in self.eq:
-            gi = self.__constraint_val(const, gene)
-            generep['g%i' % i] = gi
+            gi = self.__constraint_val(const, chromosome)
+            chromosomerep['g%i' % i] = gi
             g = max(g, gi)
             i += 1
-        generep['g'] = g
+        chromosomerep['g'] = g
 
-        self.generation.append(generep)
+        self.generation.append(chromosomerep)
 
     def __compute_fitness(self):
         """
-        Computes the fitness Fi for every gene in the current generation,
+        Computes the fitness Fi for every chromosome in the current generation,
         where for objective i, Fi is defined as
             fi if g = 0
             ffeasmax + g if g > 0
@@ -302,31 +391,31 @@ class GA:
         @pre This should be called at the beginning of every
             __trim_generation().
 
-        @post Every gene in self.generation will have Fi added for all
+        @post Every chromosome in self.generation will have Fi added for all
             objectives.
         """
         if len(self.objective) == 1:
             ffeasmax = 0
-            for generep in self.generation:
-                f = generep['f1']
-                if is_equal(generep['g'], 0, 0.0001) and f > ffeasmax:
+            for chromosomerep in self.generation:
+                f = chromosomerep['f1']
+                if is_equal(chromosomerep['g'], 0, 0.0001) and f > ffeasmax:
                     ffeasmax = f
 
-            for generep in self.generation:
-                f = generep['f1']
-                g = generep['g']
+            for chromosomerep in self.generation:
+                f = chromosomerep['f1']
+                g = chromosomerep['g']
                 if is_equal(g, 0, 0.0001):
-                    generep['fitness'] = f
+                    chromosomerep['fitness'] = f
                 else:
-                    generep['fitness'] = ffeasmax + g
+                    chromosomerep['fitness'] = ffeasmax + g
         else:
             raise Exception('not implemented')
 
     def __trim_generation(self, should_trim=True):
         """
-        Trims the generation, removing the gene with the highest fitness
-        (which is worse since we are minimizing) until the number of genes
-        match the maximum allowed number.
+        Trims the generation, removing the chromosome with the highest fitness
+        (which is worse since we are minimizing) until the number of
+        chromosomes match the maximum allowed number.
 
         As a side-effect, also sorts the generation from lowest fitness
         to highest.
@@ -335,51 +424,116 @@ class GA:
             sort or trim. False is useful for sorting.
 
         @post The size of self.generation is reduced by removing appropriate
-            genes.
+            chromosomes.
         """
         self.__compute_fitness()
 
         if should_trim:
             self.generation = sorted(self.generation,
-                                     key=lambda generep: generep['fitness'])
+                                     key=lambda chromosomerep:
+                                     chromosomerep['fitness'])
             while len(self.generation) > self.max_gen_size:
                 self.generation.pop()
 
-    def __objective_val(self, obj, gene):
+    def __objective_val(self, obj, chromosome):
         """
-        Given a gene and an objective, returns the objective function
-        evaluated at that gene.
+        Given a chromosome and an objective, returns the objective function
+        evaluated at that chromosome.
 
         @param obj {list} An objective definition.
-        @param gene {list} A gene.
+        @param chromosome {list} A chromosome.
 
         @returns {number} f(x) where f is defined by the objective and x
-            is defined by the gene.
+            is defined by the chromosome.
         """
         val = obj[0]
         for i in range(1, len(obj)):
-            val += obj[i] * gene[i-1]
+            val += obj[i] * chromosome[i-1]
         return val
 
-    def __constraint_val(self, const, gene):
+    def __constraint_val(self, const, chromosome):
         """
-        Given a gene and a constraint, returns the constraint function
-        evaluated at that gene.
+        Given a chromosome and a constraint, returns the constraint function
+        evaluated at that chromosome.
 
         @param const {list} An constraint definition.
-        @param gene {list} A gene.
+        @param chromosome {list} A chromosome.
 
         @returns {number} g(x) where g is defined by the constraint and x
-            is defined by the gene.
+            is defined by the chromosome.
         """
         val = const[0]
         for i in range(1, len(const)):
-            val -= const[i] * gene[i-1]
+            val -= const[i] * chromosome[i-1]
         return val
 
-    #==========================================================================
-    # Private Helpers: Initialization
-    #==========================================================================
+    # =========================================================================
+    # Private Helpers: Initialization and Misc.
+    # =========================================================================
+
+    def __get_next_random(self, rand_seq):
+        """
+        If a 'random' sequence is given, pops off the first number of the
+        sequence and returns it. Otherwise, returns a randomly generated
+        number.
+
+        @param rand_seq {list} The random sequence.
+
+        @returns {number} Either the first entry of rand_seq (popping it off),
+            or a randmoly generated number.
+        """
+        if rand_seq is not None:
+            return rand_seq.pop(0)
+        else:
+            return random.random()
+
+    def __check_variables_definition_feasibility(self):
+        """
+        Checks the feasibility of the initialized variables and definition.
+        """
+        for var in self.variables:
+            if var not in self.definition:
+                raise Exception('%s In variables but not in definition.' % var)
+        for var in self.definition:
+            if var not in self.variables:
+                raise Exception('%s In definition but not in variables.' % var)
+
+    def __check_objective_feasibility(self):
+        """
+        Checks the feasibility of the objective.
+        """
+        for obj in self.objective:
+            if len(obj) != len(self.variables) + 1:
+                raise Exception('Improperly-sized objective')
+
+    def __check_constraints_feasibility(self):
+        """
+        Checks the feasibility of the constraints.
+        """
+        for const in self.ineq + self.eq:
+            if len(const) != len(self.variables) + 1:
+                raise Exception('Improperly-sized constraint(s)')
+
+    def __check_initial_conditions_feasibility(self):
+        """
+        Checks the feasibility of the initial conditions (starting generation,
+        maximum generation size)
+        """
+        for chromosome in self.starting_gen:
+            if len(chromosome) is not len(self.variables):
+                raise Exception('Length of chromosome is not equal to ' +
+                                'length of defined variables')
+
+    def __initialize_current_generation(self):
+        """
+        Initializes the current generation according to the starting
+        generation.
+        """
+        self.generation = []
+        for chromosome in self.starting_gen:
+            self.__add_chromosome(chromosome)
+        self.__trim_generation(self.trim_first)
+        self.generation_number = 1
 
     def __populate_definition(self, definition):
         """
@@ -444,7 +598,7 @@ class GA:
         @param conp {string in {'<=', '=='}} The symbol definining the type
             of constraint.
 
-        @returns {string} A string representation of the gene.
+        @returns {string} A string representation of the constraint.
         """
         strng = '%.4s' % const[0]
         for i in range(1, len(const)):
@@ -453,18 +607,19 @@ class GA:
         strng += ' %s 0' % comp
         return strng
 
-    def __gene2str(self, gene):
+    def __chromosome2str(self, chromosome):
         """
-        Takes a gene and converts it into a string.
+        Takes a chromosome and converts it into a string.
 
-        @param gene {iterable} The array/list/etc. defining the gene.
+        @param chromosome {iterable} The array/list/etc. defining the
+            chromosme.
 
-        @returns {string} A string representation of the gene.
+        @returns {string} A string representation of the chromosome.
         """
         strng = '['
         first = True
         index = 0
-        for var in gene:
+        for var in chromosome:
             if not first:
                 strng = '%s, ' % strng
             strng = '%s%s=%s' % (strng, self.variables[index], var)
