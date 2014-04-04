@@ -1,5 +1,6 @@
 """
-From the ME 575 notes: example 1, used for testing.
+From the ME 575 notes: example 1, used for testing single-objective, continuous
+optimization.
 """
 
 from genetic import GA as ga
