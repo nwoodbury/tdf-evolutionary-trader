@@ -37,7 +37,8 @@ if __name__ == '__main__':
                     [0.4921, 0.2845]]
     problem = ga(name='Two-bar Truss', variables=variables,
                  definition=definition, objective=objective, ineq=ineq,
-                 starting_gen=starting_gen, trim_first=False)
+                 starting_gen=starting_gen, trim_first=False,
+                 total_generations=10, max_gen_size=30)
     print problem
     print problem.current_generation_str()
 
@@ -49,3 +50,7 @@ if __name__ == '__main__':
                     0.8673]
     problem.next_generation(2, selection_rnd, mutation_rnd, False)
     print problem.current_generation_str()
+
+    problem.solve()
+    print problem.current_generation_str()
+    print problem.solution_str()

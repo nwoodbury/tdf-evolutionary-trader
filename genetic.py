@@ -6,6 +6,7 @@ from termcolor import colored
 import random
 import math
 from copy import deepcopy
+import sys
 
 
 def is_equal(x, y, tol=0.001):
@@ -207,6 +208,62 @@ class GA:
         for chromosome in mutated_generation:
             self.__add_chromosome(chromosome)
         self.__trim_generation()
+
+    def solve(self):
+        """
+        Solves the genetic algorithm by iterating until generation_number is
+        equal to total_generations.
+        """
+        while self.generation_number < self.total_generations:
+            sys.stdout.write('\rSolving.....%.2f%% Complete' %
+                             (100 * self.generation_number /
+                              float(self.total_generations)))
+            sys.stdout.flush()
+            self.next_generation()
+        print '\nOptimization Terminated\n'
+        self.__retrieve_solution()
+
+    def solution_str(self):
+        """
+        Returns a string with the final solution.
+
+        @pre solve() has been called.
+        @returns {str}
+        """
+        strng = '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'
+        strng += 'Best fitness found: '
+        strng += colored('%.4f\n' % self.solution['fitness'], 'green')
+        strng += 'Best solution: '
+        strng += colored('%s\n' %
+                         self.__chromosome2str(self.solution['chromosome']),
+                         'green')
+
+        strng += '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'
+        return strng
+
+    # =========================================================================
+    # Private Helpers: Solution
+    # =========================================================================
+
+    def __retrieve_solution(self):
+        """
+        Retrieves the chromosome in the current generation with the best
+        (smallest) fitness. If several chromosomes have the same fitness,
+        chooses a random among those.
+        """
+        # Count those with same fitness as first in generation
+        maxfitness = self.generation[0]['fitness']
+
+        first = True
+        numwithfitness = 1
+        for chromosome in self.generation:
+            if first:
+                first = False
+                continue
+            if is_equal(chromosome['fitness'], maxfitness):
+                numwithfitness += 1
+        index = int(math.floor(random.random() * numwithfitness))
+        self.solution = self.generation[index]
 
     # =========================================================================
     # Private Helpers: Selection, Crossover, and Mutation
@@ -622,7 +679,7 @@ class GA:
         for var in chromosome:
             if not first:
                 strng = '%s, ' % strng
-            strng = '%s%s=%s' % (strng, self.variables[index], var)
+            strng = '%s%s=%.4f' % (strng, self.variables[index], var)
             first = False
             index += 1
         strng = '%s]' % strng
