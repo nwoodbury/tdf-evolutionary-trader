@@ -299,14 +299,14 @@ class GA:
         """
         N = len(self.generation)
         new_generation = []
-        for n in range(0, int(math.floor(N/2))):
+        for n in range(0, int(math.floor(N / 2))):
             parents = []
             for p in [0, 1]:
                 minindex = -1
                 minfitness = 0
                 for i in range(0, tournament_size):
                     rdm = self.__get_next_random(selection_rand)
-                    index = int(math.floor(rdm*N))
+                    index = int(math.floor(rdm * N))
                     fitness = self.generation[index]['fitness']
                     # print '%.4f, %i, %.4f' % (rdm, index, fitness)
                     if minindex == -1 or fitness < minfitness:
@@ -345,10 +345,10 @@ class GA:
             child2 = []
             for i in range(len(self.variables)):
                 crossover = self.__get_next_random(crossover_rand)
-                child1.append(crossover*mother[i] +
-                              (1-crossover)*father[i])
-                child2.append((1 - crossover)*mother[i] +
-                              crossover*father[i])
+                child1.append(crossover * mother[i] +
+                              (1 - crossover) * father[i])
+                child2.append((1 - crossover) * mother[i] +
+                              crossover * father[i])
         else:
             child1 = deepcopy(mother)
             child2 = deepcopy(father)
@@ -379,7 +379,7 @@ class GA:
                 if cond:
                     j = self.generation_number
                     M = self.total_generations
-                    alpha = (1 - (float(j) - 1) / float(M))**float(self.beta)
+                    alpha = (1 - (float(j) - 1) / float(M)) ** float(self.beta)
                     r = self.__get_next_random(mutation_rand)
                     xname = self.variables[i]
                     xmin = self.definition[xname]['lb']
@@ -387,11 +387,11 @@ class GA:
                     x = child[i]
                     y = xmin + r * (xmax - xmin)
                     if y <= x:
-                        z = xmin + ((y - xmin)**alpha) * \
-                            ((x - xmin)**(1 - alpha))
+                        z = xmin + ((y - xmin) ** alpha) * \
+                            ((x - xmin) ** (1 - alpha))
                     else:
-                        z = xmax - ((xmax - y)**alpha) *\
-                            ((xmax - x)**(1 - alpha))
+                        z = xmax - ((xmax - y) ** alpha) *\
+                            ((xmax - x) ** (1 - alpha))
 
                     # print '\tMutated Gene = %.4f' % z
 
