@@ -21,13 +21,13 @@ if __name__ == '__main__':
         }
     }
     objective = [
-        [0, 1.429, 0.57]
+        lambda x: 1.429*x[0] + 0.57*x[1]
     ]
     ineq = [
-        [0, 2, 0],
-        [0, 0, 2],
-        [0.3386, 1.354, 1.323],
-        [0.2463, 1.26, 1.232]
+        lambda x: -2*x[0],
+        lambda x: -2*x[1],
+        lambda x: 0.3386 - 1.354*x[0] - 1.323*x[1],
+        lambda x: 0.2463 - 1.260*x[0] - 1.232*x[1]
     ]
     eq = []
     starting_gen = [[0.2833, 0.1408],
@@ -39,9 +39,9 @@ if __name__ == '__main__':
     problem = ga(name='Two-bar Truss', variables=variables,
                  definition=definition, objective=objective, ineq=ineq,
                  starting_gen=starting_gen, trim_first=False,
-                 total_generations=10, max_gen_size=30)
+                 total_generations=10, max_gen_size=6)
     print problem
-    print problem.current_generation_str()
+    print problem.current_generation_str(True)
 
     selection_rnd = [0.5292, 0.0436, 0.2949, 0.0411, 0.9116, 0.7869,
                      0.3775, 0.8691, 0.1562, 0.5616, 0.8135, 0.4158,

@@ -7,6 +7,7 @@ import random
 import math
 from copy import deepcopy
 import sys
+import numpy as np
 
 
 def is_equal(x, y, tol=0.001):
@@ -45,14 +46,15 @@ class GA:
                 'category': {string in {'continuous', 'discrete'},
                     default='continuous'}. Whether the variable is continuous
                     or discrete.
-        @param objective {list} The definition for the objective, which is to
-            minimize: objective[0] + objective[1]*variables[0] +
-                      objective[2]*variables[1] - ...
-
-        @param ineq {list} The definition for the inequality constraints where:
-            ineq[0] - ineq[1]*variables[0] - ineq[2]*variables[1] - ... <= 0
-        @param eq {list} The definition for the equality constraints where:
-            eq[0] - eq[1]*variables[0] - eq[2]*variables[1] - ... = 0
+        @param objective {list} A list of functions defining the objective
+            functions, where, given entry fi in objective, the corresponding
+            objective is minimize fi(x)
+        @param ineq {list} A list of functions defining the inequality
+            constraints, where, given entry gi in ineq, the constraint is
+            gi(x) <= 0
+        @param eq {list} A list of functions defining the equality
+            constraints, where, given entry gi in ineq, the constraint is
+            gi(x) == 0
         @param starting_gen {list} The list of the starting generation genes,
             where each entry is a list defining the values for the defined
             variables.
@@ -206,6 +208,12 @@ class GA:
             print 'New generation after mutation:'
             print mutated_generation
         for chromosome in mutated_generation:
+            # Discretize discreet variables
+            for i in range(len(self.variables)):
+                variable = self.variables[i]
+                if self.definition[variable]['category'] is 'discreet':
+                    chromosome[i] = round(chromosome[i])
+        for chromosome in mutated_generation:
             self.__add_chromosome(chromosome)
         self.__trim_generation()
 
@@ -237,6 +245,10 @@ class GA:
         strng += colored('%s\n' %
                          self.__chromosome2str(self.solution['chromosome']),
                          'green')
+        strng += 'Objective Values:\n'
+        for j in range(len(self.objective)):
+            i = j + 1
+            strng += '\tf%s(x) = %.4f\n' % (i, self.solution['f%i' % i])
 
         strng += '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'
         return strng
@@ -439,11 +451,20 @@ class GA:
 
     def __compute_fitness(self):
         """
-        Computes the fitness Fi for every chromosome in the current generation,
-        where for objective i, Fi is defined as
+        Computes the fitness Fi for every chromosome in the current generation.
+
+        If there is only objective, the fitness is computed, where for
+        objective i, Fi is defined as
             fi if g = 0
             ffeasmax + g if g > 0
         where ffeasmax is the maximum value of f for all designs where g = 0.
+
+        If there are many objectives, the fitness of chromosome i is defined as
+        the maximin fitness, which is
+            max_{j \neq i}(min_k(f^i_k - f^j_k))
+        where j is an arbitrary chromosome in the current generation and f^i_k
+        is an arbitrary objective value for objective k of the chromosome i
+        (and likewise for j).
 
         @pre This should be called at the beginning of every
             __trim_generation().
@@ -466,7 +487,31 @@ class GA:
                 else:
                     chromosomerep['fitness'] = ffeasmax + g
         else:
-            raise Exception('not implemented')
+            for index in range(len(self.generation)):
+                currchromosome = self.generation[index]
+                currobjective = self.__get_objective_array(currchromosome)
+                maxj = float('-inf')
+                for i in range(len(self.generation)):
+                    if index == i:
+                        continue
+                    compchromosome = self.generation[i]
+                    compobjective = self.__get_objective_array(compchromosome)
+                    mink = min(currobjective - compobjective)
+                    maxj = max(mink, maxj)
+                self.generation[index]['fitness'] = maxj
+
+    def __get_objective_array(self, chromosome):
+        """
+        Given a chromosome, returns a numpy array of each computed objective
+        value in sequence.
+
+        @param chromosome {dict}
+        @returns {numpy.array} The objective array.
+        """
+        objective_list = []
+        for i in range(len(self.objective)):
+            objective_list.append(chromosome['f%i' % (i + 1)])
+        return np.array(objective_list)
 
     def __trim_generation(self, should_trim=True):
         """
@@ -497,32 +542,26 @@ class GA:
         Given a chromosome and an objective, returns the objective function
         evaluated at that chromosome.
 
-        @param obj {list} An objective definition.
+        @param obj {function} An objective definition.
         @param chromosome {list} A chromosome.
 
         @returns {number} f(x) where f is defined by the objective and x
             is defined by the chromosome.
         """
-        val = obj[0]
-        for i in range(1, len(obj)):
-            val += obj[i] * chromosome[i-1]
-        return val
+        return obj(chromosome)
 
     def __constraint_val(self, const, chromosome):
         """
         Given a chromosome and a constraint, returns the constraint function
         evaluated at that chromosome.
 
-        @param const {list} An constraint definition.
+        @param const {function} An constraint definition.
         @param chromosome {list} A chromosome.
 
         @returns {number} g(x) where g is defined by the constraint and x
             is defined by the chromosome.
         """
-        val = const[0]
-        for i in range(1, len(const)):
-            val -= const[i] * chromosome[i-1]
-        return val
+        return const(chromosome)
 
     # =========================================================================
     # Private Helpers: Initialization and Misc.
@@ -558,18 +597,18 @@ class GA:
     def __check_objective_feasibility(self):
         """
         Checks the feasibility of the objective.
+
+        OBSOLETE
         """
-        for obj in self.objective:
-            if len(obj) != len(self.variables) + 1:
-                raise Exception('Improperly-sized objective')
+        pass
 
     def __check_constraints_feasibility(self):
         """
         Checks the feasibility of the constraints.
+
+        OBSOLETE
         """
-        for const in self.ineq + self.eq:
-            if len(const) != len(self.variables) + 1:
-                raise Exception('Improperly-sized constraint(s)')
+        pass
 
     def __check_initial_conditions_feasibility(self):
         """
@@ -641,10 +680,7 @@ class GA:
 
         @returns {string} A string representation of the objective.
         """
-        strng = 'minimize %.4s' % obj[0]
-        for i in range(1, len(obj)):
-            if not is_equal(obj[i], 0, 0.0001):
-                strng += ' + (%.4s)%s' % (obj[i], self.variables[i - 1])
+        strng = 'minimize f(x)'
         return strng
 
     def __const2str(self, const, comp):
@@ -657,11 +693,7 @@ class GA:
 
         @returns {string} A string representation of the constraint.
         """
-        strng = '%.4s' % const[0]
-        for i in range(1, len(const)):
-            if not is_equal(const[i], 0, 0.0001):
-                strng += ' - (%.4s)%s' % (const[i], self.variables[i-1])
-        strng += ' %s 0' % comp
+        strng = 'g(x) %s 0' % comp
         return strng
 
     def __chromosome2str(self, chromosome):
@@ -679,7 +711,12 @@ class GA:
         for var in chromosome:
             if not first:
                 strng = '%s, ' % strng
-            strng = '%s%s=%.4f' % (strng, self.variables[index], var)
+            variable = self.variables[index]
+            if self.definition[variable]['category'] is 'discreet':
+                val = '%i' % var
+            else:
+                val = '%.4f' % var
+            strng = '%s%s=%s' % (strng, variable, val)
             first = False
             index += 1
         strng = '%s]' % strng

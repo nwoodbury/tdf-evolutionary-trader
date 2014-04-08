@@ -1,6 +1,6 @@
 """
-From the ME 575 notes: chapter 5 examples 5-7, used for testing
-multi-objective, continuous optimization.
+From the ME 575 notes: chapter 5 examples 5-7, with integer variables
+used for testing multi-objective, discreet optimization.
 """
 
 from genetic import GA as ga
@@ -11,11 +11,13 @@ if __name__ == '__main__':
     definition = {
         'x1': {
             'lb': -100,
-            'ub': 100
+            'ub': 100,
+            'category': 'discreet'
         },
         'x2': {
             'lb': -100,
-            'ub': 100
+            'ub': 100,
+            'category': 'discreet'
         }
     }
     objective = [
