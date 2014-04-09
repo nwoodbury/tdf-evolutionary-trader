@@ -442,7 +442,7 @@ class GA:
             i += 1
         for const in self.eq:
             gi = self.__constraint_val(const, chromosome)
-            chromosomerep['g%i' % i] = gi
+            chromosomerep['g%i' % i] = math.fabs(gi)
             g = max(g, gi)
             i += 1
         chromosomerep['g'] = g
@@ -472,20 +472,24 @@ class GA:
         @post Every chromosome in self.generation will have Fi added for all
             objectives.
         """
-        if len(self.objective) == 1:
+        for index in range(len(self.objective)):
+            i = index + 1
             ffeasmax = 0
             for chromosomerep in self.generation:
-                f = chromosomerep['f1']
+                f = chromosomerep['f%i' % i]
                 if is_equal(chromosomerep['g'], 0, 0.0001) and f > ffeasmax:
                     ffeasmax = f
 
             for chromosomerep in self.generation:
-                f = chromosomerep['f1']
+                f = chromosomerep['f%i' % i]
                 g = chromosomerep['g']
                 if is_equal(g, 0, 0.0001):
-                    chromosomerep['fitness'] = f
+                    chromosomerep['fitness%i' % i] = f
                 else:
-                    chromosomerep['fitness'] = ffeasmax + g
+                    chromosomerep['fitness%i' % i] = ffeasmax + g
+        if len(self.objective) == 1:
+            for chromosomerep in self.generation:
+                chromosomerep['fitness'] = chromosomerep['fitness1']
         else:
             for index in range(len(self.generation)):
                 currchromosome = self.generation[index]
@@ -510,7 +514,7 @@ class GA:
         """
         objective_list = []
         for i in range(len(self.objective)):
-            objective_list.append(chromosome['f%i' % (i + 1)])
+            objective_list.append(chromosome['fitness%i' % (i + 1)])
         return np.array(objective_list)
 
     def __trim_generation(self, should_trim=True):
